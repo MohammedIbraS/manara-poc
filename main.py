@@ -4,7 +4,7 @@ import streamlit as st
 import requests
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Manara Screening", page_icon="static\lighthouse.png", layout="wide")
+st.set_page_config(page_title="Manara Screening", page_icon="🔬", layout="wide")
 
 # --- INITIALIZE SESSION STATE ---
 # We now need a more structured state to hold articles and their screening status
@@ -94,11 +94,7 @@ def set_status(article_id, new_status):
             break
 
 # --- USER INTERFACE ---
-col1, col2 = st.columns([0.1, 0.9],gap="small")
-with col1:
-    st.image("static\lighthouse.png",width=90)
-with col2:
-    st.title("Manara AI - Screening Workspace")
+st.title("🔬 Manara AI - Screening Workspace")
 
 # --- SIDEBAR FOR SEARCH AND SCOREBOARD ---
 with st.sidebar:
