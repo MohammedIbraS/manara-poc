@@ -3,7 +3,8 @@
 import streamlit as st
 import datetime
 from Bio import Entrez
-from sentence_transformers import SentenceTransformer, util # NEW: Import sentence-transformers
+from sentence_transformers import SentenceTransformer, util
+import re
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Manara Screening", page_icon="🔬", layout="wide")
@@ -24,6 +25,9 @@ if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'error' not in st.session_state:
     st.session_state.error = None
+if 'pico_query_text' not in st.session_state:
+    st.session_state.pico_query_text = ""
+
 
 # --- FUNCTIONS ---
 def construct_pico_query(p=None, i=None, c=None, o=None, saudi_filter=False, year_range=None):
@@ -54,12 +58,13 @@ def get_abstract(article_id):
         abstract = record['PubmedArticle'][0]['MedlineCitation']['Article']['Abstract']['AbstractText'][0]
         return str(abstract)
     except (IndexError, KeyError):
-        return None # Return None if abstract is not found
+        return None
     except Exception:
         return None
 
 def search_pubmed(query, pico_query_text, max_results=10):
     """Search PubMed, calculate relevance, and update the session state."""
+    st.session_state.pico_query_text = pico_query_text
     try:
         handle = Entrez.esearch(db="pubmed", term=query, retmax=str(max_results), sort="relevance")
         record = Entrez.read(handle)
@@ -82,21 +87,18 @@ def search_pubmed(query, pico_query_text, max_results=10):
             title = record['MedlineCitation']['Article']['ArticleTitle']
             abstract = get_abstract(article_id)
             
-            if abstract: # Only process articles that have an abstract
+            if abstract:
                 results.append({"title": title, "id": article_id, "status": "pending", "abstract": abstract})
                 abstracts_to_score.append(abstract)
 
-        # --- NEW: AI Relevance Scoring ---
         if abstracts_to_score:
             query_embedding = model.encode(pico_query_text, convert_to_tensor=True)
             abstract_embeddings = model.encode(abstracts_to_score, convert_to_tensor=True)
             cosine_scores = util.cos_sim(query_embedding, abstract_embeddings)
             
-            # Add scores to the results
             for i, article in enumerate(results):
-                article['relevance_score'] = cosine_scores[0][i].item() # Get score as a float
+                article['relevance_score'] = cosine_scores[0][i].item()
             
-            # Sort the results by the new relevance score, highest first
             results.sort(key=lambda x: x['relevance_score'], reverse=True)
 
         st.session_state.search_results = results
@@ -106,13 +108,26 @@ def search_pubmed(query, pico_query_text, max_results=10):
         st.session_state.search_results = []
         st.session_state.error = f"An API error occurred: {e}"
 
-
 def set_status(article_id, new_status):
     """Find the article in session_state and update its status."""
     for article in st.session_state.search_results:
         if article['id'] == article_id:
             article['status'] = new_status
             break
+
+def highlight_text(text, keywords):
+    """Highlights keywords in a case-insensitive manner in the given text."""
+    if not keywords.strip():
+        return text
+    
+    keyword_list = [kw.strip() for kw in keywords.split() if kw.strip()]
+    if not keyword_list:
+        return text
+        
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(kw) for kw in keyword_list) + r')\b', re.IGNORECASE)
+    
+    highlighted_text = pattern.sub(r'<mark>\1</mark>', text)
+    return highlighted_text
 
 # --- USER INTERFACE ---
 st.title("🔬 Manara AI - Screening Workspace")
@@ -131,7 +146,7 @@ with st.sidebar:
 
     if st.button("Search PubMed", type="primary"):
         pico_components = [p, i, c, o]
-        pico_query_text = " ".join(filter(None, pico_components)) # Create a single string from PICO inputs
+        pico_query_text = " ".join(filter(None, pico_components))
         
         query = construct_pico_query(p, i, c, o, saudi_filter=saudi_filter, year_range=year_range)
         if query:
@@ -145,11 +160,15 @@ with st.sidebar:
     if st.session_state.search_results:
         included_count = sum(1 for a in st.session_state.search_results if a['status'] == 'included')
         excluded_count = sum(1 for a in st.session_state.search_results if a['status'] == 'excluded')
+        # --- NEW: Calculate the 'maybe' count ---
+        maybe_count = sum(1 for a in st.session_state.search_results if a['status'] == 'maybe')
         pending_count = sum(1 for a in st.session_state.search_results if a['status'] == 'pending')
         
         st.metric("✅ Included", included_count)
         st.metric("❌ Excluded", excluded_count)
-        st.metric("🤔 Pending", pending_count)
+        # --- NEW: Display the 'maybe' metric ---
+        st.metric("🤔 Maybe", maybe_count)
+        st.metric("⏳ Pending", pending_count) # Changed emoji for clarity
 
 st.header("Search Results")
 
@@ -159,16 +178,25 @@ elif not st.session_state.search_results:
     st.info("Enter your search criteria in the sidebar and click 'Search PubMed' to begin.")
 else:
     for article in st.session_state.search_results:
-        # --- NEW: Display the relevance score with the title ---
         score_percentage = article.get('relevance_score', 0) * 100
         display_title = f"**{score_percentage:.1f}% Match** | {article['title']}"
         
         with st.expander(f"*{article['status'].upper()}*: {display_title}"):
-            st.markdown(article.get('abstract', 'Abstract not available.'))
+            abstract = article.get('abstract', 'Abstract not available.')
+            
+            highlighted_abstract = highlight_text(abstract, st.session_state.pico_query_text)
+            st.markdown(highlighted_abstract, unsafe_allow_html=True)
+            
             st.divider()
             
-            col1, col2 = st.columns(2)
+            # --- NEW: Changed to 3 columns to fit the new button ---
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.button("✅ Include", key=f"include_{article['id']}", on_click=set_status, args=(article['id'], '✅ included'), use_container_width=True)
+                st.button("✅ Include", key=f"include_{article['id']}", on_click=set_status, args=(article['id'], 'included'), use_container_width=True)
+            
+            # --- NEW: Added the "Maybe" button in the middle column ---
             with col2:
-                st.button("❌ Exclude", key=f"exclude_{article['id']}", on_click=set_status, args=(article['id'], '❌ excluded'), use_container_width=True)
+                st.button("🤔 Maybe", key=f"maybe_{article['id']}", on_click=set_status, args=(article['id'], 'maybe'), use_container_width=True)
+
+            with col3:
+                st.button("❌ Exclude", key=f"exclude_{article['id']}", on_click=set_status, args=(article['id'], 'excluded'), use_container_width=True)
