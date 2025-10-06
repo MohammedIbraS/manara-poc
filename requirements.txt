@@ -4,3 +4,4 @@ transformers
 torch
 datetime
 sentence-transformers
+biopython

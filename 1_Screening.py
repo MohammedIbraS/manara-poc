@@ -10,7 +10,7 @@ import re
 st.set_page_config(page_title="Manara Screening", page_icon="🔬", layout="wide")
 
 # --- NCBI API Configuration ---
-Entrez.email = "your.email@example.com" 
+Entrez.email = "mo7eh7@gmail.com" 
 
 # --- MODEL LOADING ---
 @st.cache_resource
@@ -30,7 +30,7 @@ if 'pico_query_text' not in st.session_state:
 
 
 # --- FUNCTIONS ---
-def construct_pico_query(p=None, i=None, c=None, o=None, saudi_filter=False, year_range=None):
+def construct_pico_query(p=None, i=None, c=None, o=None, saudi_filter=False, year_range=None, publication_type=None):
     """Construct a high-precision PubMed query from all components."""
     terms = []
     if p: terms.append(f'"{p}"[Title/Abstract]')
@@ -40,7 +40,14 @@ def construct_pico_query(p=None, i=None, c=None, o=None, saudi_filter=False, yea
 
     if saudi_filter:
         terms.append(f'("Saudi Arabia"[MeSH Terms] OR "Saudi Arabia"[Title/Abstract])')
-    
+
+    publication_type_filter = []
+    if publication_type:
+        for t in publication_type:
+            publication_type_filter.append(f'("{t}"[Publication Type])')
+            publication = " OR ".join(publication_type_filter)
+        terms.append('('+publication+')')
+
     if year_range:
         start_year, end_year = year_range
         terms.append(f'("{start_year}"[Date - Publication] : "{end_year}"[Date - Publication])')
@@ -139,6 +146,12 @@ with st.sidebar:
     c = st.text_input("**C** - Comparison (Optional)")
     o = st.text_input("**O** - Outcome (Optional)")
 
+    publication_type = st.multiselect(
+    "Select the Publication Type",
+    ["Randomized Controlled Trial","Case Reports","Case-control studies",
+    "Cross-sectional studies","Qualitative studies"]
+    )
+
     current_year = datetime.date.today().year
     year_range = st.slider("Publication Year Range", min_value=1950, max_value=current_year, value=(current_year - 10, current_year))
     
@@ -148,9 +161,10 @@ with st.sidebar:
         pico_components = [p, i, c, o]
         pico_query_text = " ".join(filter(None, pico_components))
         
-        query = construct_pico_query(p, i, c, o, saudi_filter=saudi_filter, year_range=year_range)
+        query = construct_pico_query(p, i, c, o, saudi_filter=saudi_filter, year_range=year_range, publication_type=publication_type)
         if query:
             with st.spinner("Searching PubMed & calculating relevance scores..."):
+                print(query)
                 search_pubmed(query, pico_query_text)
         else:
             st.warning("Please enter at least one PICO term.")
@@ -160,15 +174,20 @@ with st.sidebar:
     if st.session_state.search_results:
         included_count = sum(1 for a in st.session_state.search_results if a['status'] == 'included')
         excluded_count = sum(1 for a in st.session_state.search_results if a['status'] == 'excluded')
-        # --- NEW: Calculate the 'maybe' count ---
+        # Calculate the 'maybe' count ---
         maybe_count = sum(1 for a in st.session_state.search_results if a['status'] == 'maybe')
         pending_count = sum(1 for a in st.session_state.search_results if a['status'] == 'pending')
         
         st.metric("✅ Included", included_count)
         st.metric("❌ Excluded", excluded_count)
-        # --- NEW: Display the 'maybe' metric ---
+        # Display the 'maybe' metric ---
         st.metric("🤔 Maybe", maybe_count)
         st.metric("⏳ Pending", pending_count) # Changed emoji for clarity
+        included_ids = [a['id'] for a in st.session_state.search_results if a['status'] == 'included']
+        if included_ids:
+            st.success(f"Ready to move {len(included_ids)} articles to Data Extraction.")
+            # This link will appear once you have at least one included article
+            st.page_link("pages/2_Data_Extraction.py", label="Go to Data Extraction", icon="➡️")
 
 st.header("Search Results")
 
@@ -182,6 +201,7 @@ else:
         display_title = f"**{score_percentage:.1f}% Match** | {article['title']}"
         
         with st.expander(f"*{article['status'].upper()}*: {display_title}"):
+            
             abstract = article.get('abstract', 'Abstract not available.')
             
             highlighted_abstract = highlight_text(abstract, st.session_state.pico_query_text)
@@ -189,12 +209,12 @@ else:
             
             st.divider()
             
-            # --- NEW: Changed to 3 columns to fit the new button ---
+            # Changed to 3 columns to fit the new button ---
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.button("✅ Include", key=f"include_{article['id']}", on_click=set_status, args=(article['id'], 'included'), use_container_width=True)
             
-            # --- NEW: Added the "Maybe" button in the middle column ---
+            # Added the "Maybe" button in the middle column ---
             with col2:
                 st.button("🤔 Maybe", key=f"maybe_{article['id']}", on_click=set_status, args=(article['id'], 'maybe'), use_container_width=True)
 
