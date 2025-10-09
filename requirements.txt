@@ -1,11 +1,9 @@
-# requirements.txt
 requests
 transformers
 torch
 datetime
 sentence-transformers
-<<<<<<< HEAD
 biopython
-=======
-biopython
->>>>>>> e695c5fbbb50d7594fd5ae367ad45f31ee0299e3
+google-generativeai
+google-genai
+PyMuPDF
