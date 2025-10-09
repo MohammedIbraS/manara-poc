@@ -8,7 +8,7 @@ import re
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="Manara Screening", page_icon="static\lighthouse.png", layout="wide"
+    page_title="Manara Screening", layout="wide"
 )
 
 # --- NCBI API Configuration ---
@@ -179,11 +179,7 @@ def highlight_text(text, keywords):
 
 
 # --- USER INTERFACE ---
-col1, col2 = st.columns([0.1, 0.9], gap="small")
-with col1:
-    st.image("static\lighthouse.png", width=130)
-with col2:
-    st.title("Manara AI - Screening Workspace")
+st.title("Manara AI - Screening Workspace")
 
 with st.sidebar:
     st.header("Search Controls")
