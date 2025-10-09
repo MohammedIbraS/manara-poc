@@ -7,3 +7,4 @@ biopython
 google-generativeai
 google-genai
 PyMuPDF
+
