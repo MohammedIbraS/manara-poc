@@ -11,14 +11,22 @@ import json
 st.set_page_config(page_title="Data Extraction", page_icon="📝", layout="wide")
 
 # --- API & URL Configuration (from secrets) ---
+st.sidebar.header("Configuration")
 try:
+    # Priority 1: Try to load from secrets (most secure)
     n8n_webhook_url = st.secrets["N8N_WEBHOOK_URL"]
+    st.sidebar.success("✅ n8n webhook configured securely.")
 except (FileNotFoundError, KeyError):
-    st.error("N8N_WEBHOOK_URL not found in secrets. Please add it to your .streamlit/secrets.toml file.")
-    n8n_webhook_url = None
+    # Priority 2: Fallback to a user input if secrets are not found
+    st.sidebar.warning("n8n webhook not found in secrets. Please provide it below.")
+    n8n_webhook_url = st.sidebar.text_input(
+        "Enter your n8n Webhook URL:",
+        type="password", # Obscures the URL for security
+        help="Paste the Production URL from your n8n webhook node here."
+    )
 
 # --- NCBI API Configuration ---
-Entrez.email = "your.email@example.com" 
+Entrez.email = "mo7eh7@gmail.com" 
 
 # --- INITIALIZE SESSION STATE ---
 if 'extraction_form_fields' not in st.session_state:
@@ -31,12 +39,14 @@ if 'pdf_info' not in st.session_state:
 # --- FUNCTIONS ---
 def extract_text_from_pdf(pdf_source, is_url=True):
     """Extracts text from a PDF, either from a URL or an uploaded file object."""
+    #st.write(pdf_source)
     try:
         if is_url:
             response = requests.get(pdf_source, timeout=15)
             response.raise_for_status()
             pdf_bytes = response.content
         else:
+            pdf_source.seek(0)
             pdf_bytes = pdf_source.read()
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             full_text = "".join(page.get_text() for page in doc)
@@ -66,7 +76,7 @@ def run_n8n_extraction(webhook_url, text_content, form_fields):
         text_from_ai = response_data['content']['parts'][0]['text']
         
         if not text_from_ai or not isinstance(text_from_ai, str):
-             raise ValueError("The response from n8n was not the expected text format.")
+            raise ValueError("The response from n8n was not the expected text format.")
 
         json_response = text_from_ai.strip().replace("```json", "").replace("```", "").strip()
         extracted_data = json.loads(json_response)
@@ -97,7 +107,7 @@ def get_doi_and_pdf_link(article_id):
     if not doi:
         return "DOI not found", None, False, None
 
-    unpaywall_url = f"https://api.unpaywall.org/v2/{doi}?email=your.email@example.com"
+    unpaywall_url = f"https://api.unpaywall.org/v2/{doi}?email=mo7eh7@gmail.com"
     try:
         response = requests.get(unpaywall_url, timeout=10)
         response.raise_for_status()
@@ -194,15 +204,15 @@ else:
             viewable_pdf_url = pdf_link and "http" in pdf_link and not is_attachment
             uploaded_file = None
             if viewable_pdf_url:
-                ##st.toast("✅ Open-access PDF found!", icon="✅")
+                st.toast(" Open-access PDF found!", icon="✅")
                 st.components.v1.iframe(pdf_link, height=800)
             else:
                 if is_attachment:
-                    ##st.toast("📄 PDF is a download-only file. Please use the download button or uploader.", icon="📄")
+                    st.toast(" PDF is a download-only file. Please use the download button or uploader.", icon="📄")
                     st.link_button("📥 Download PDF", url=pdf_link)
-                else:
-                    ##st.toast(f"❌ {pdf_link}", icon="❌")
+                    
                     uploaded_file = st.file_uploader("Upload PDF:", type="pdf", key=f"uploader_{article_id}")
+            
                 if uploaded_file:
                     base64_pdf = base64.b64encode(uploaded_file.read()).decode('utf-8')
                     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800"></iframe>'
@@ -212,14 +222,14 @@ else:
             st.header("Data Extraction Form")
             
             run_ai_button = st.button("🤖 Run AI Extraction via n8n", use_container_width=True)
-
+            
             if run_ai_button:
                 text_source, is_url_source = None, False
                 if uploaded_file:
-                    text_source, is_url_source = uploaded_file, False
+                    text_source, is_url_source = uploaded_file, False          
                 elif viewable_pdf_url:
                     text_source, is_url_source = pdf_link, True
-
+                
                 if text_source and st.session_state.extraction_form_fields:
                     with st.spinner("Reading PDF and sending to n8n..."):
                         full_text = extract_text_from_pdf(text_source, is_url=is_url_source)
