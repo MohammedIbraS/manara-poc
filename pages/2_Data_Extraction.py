@@ -188,7 +188,7 @@ else:
             with st.spinner("Searching for article PDF..."):
                 doi, pdf_link, is_attachment, error_message = get_doi_and_pdf_link(article_id)
             st.session_state.pdf_info = {"doi": doi, "pdf_link": pdf_link, "is_attachment": is_attachment}
-            ##if error_message: st.toast(error_message, icon="⚠️")
+            #if error_message: st.toast(error_message, icon="⚠️")
         
         doi = st.session_state.pdf_info.get("doi")
         pdf_link = st.session_state.pdf_info.get("pdf_link")
@@ -210,8 +210,10 @@ else:
                 if is_attachment:
                     st.toast(" PDF is a download-only file. Please use the download button or uploader.", icon="📄")
                     st.link_button("📥 Download PDF", url=pdf_link)
+                if pdf_link == "No open-access PDF found" or pdf_link == "Could not contact Unpaywall":
+                    st.warning("No open-access PDF found for this article.")
                     
-                    uploaded_file = st.file_uploader("Upload PDF:", type="pdf", key=f"uploader_{article_id}")
+                uploaded_file = st.file_uploader("Upload PDF:", type="pdf", key=f"uploader_{article_id}")
             
                 if uploaded_file:
                     base64_pdf = base64.b64encode(uploaded_file.read()).decode('utf-8')
